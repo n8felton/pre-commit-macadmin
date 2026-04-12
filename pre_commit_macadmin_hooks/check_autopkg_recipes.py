@@ -451,6 +451,19 @@ def validate_proc_type_conventions(process, filename):
         ],
     }
 
+    # Extract all known recipe types from conventions
+    all_known_types = []
+    for recipe_group in proc_type_conventions:
+        for recipe_type in recipe_group:
+            all_known_types.append(f".{recipe_type}.")
+
+    # Skip validation if filename doesn't contain any known recipe type
+    if not any(known_type in filename for known_type in all_known_types):
+        print(
+            f"{filename}: WARNING: Unknown recipe type. Skipping processor convention checks."
+        )
+        return True
+
     passed = True
     processors = [x.get("Processor") for x in process]
     for recipe_group in proc_type_conventions:

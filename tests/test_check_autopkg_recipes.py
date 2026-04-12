@@ -201,6 +201,202 @@ class TestCheckAutopkgRecipes(unittest.TestCase):
         result = target.validate_no_var_in_app_path(process, "file.recipe")
         self.assertTrue(result)
 
+    def test_validate_proc_type_conventions_unknown_type_passes(self):
+        # Unknown recipe type should skip validation and pass with warning
+        process = [{"Processor": "MunkiImporter"}]
+        with mock.patch("builtins.print") as mock_print:
+            result = target.validate_proc_type_conventions(process, "App.custom.recipe")
+        self.assertTrue(result)
+        mock_print.assert_called_with(
+            "App.custom.recipe: WARNING: Unknown recipe type. Skipping processor convention checks."
+        )
+
+    def test_validate_proc_type_conventions_known_type_wrong_processor_fails(self):
+        # Munki processor in a download recipe should fail
+        process = [{"Processor": "MunkiImporter"}]
+        with mock.patch("builtins.print") as mock_print:
+            result = target.validate_proc_type_conventions(
+                process, "App.download.recipe"
+            )
+        self.assertFalse(result)
+        mock_print.assert_called_with(
+            "App.download.recipe: Processor MunkiImporter is not conventional for this recipe type."
+        )
+
+    def test_validate_proc_type_conventions_known_type_correct_processor_passes(self):
+        # Munki processor in a munki recipe should pass
+        process = [{"Processor": "MunkiImporter"}]
+        result = target.validate_proc_type_conventions(process, "App.munki.recipe")
+        self.assertTrue(result)
+
+    def test_validate_required_proc_for_types_munki_with_importer_passes(self):
+        # Munki recipe with MunkiImporter should pass
+        process = [{"Processor": "MunkiImporter"}]
+        result = target.validate_required_proc_for_types(process, "App.munki.recipe")
+        self.assertTrue(result)
+
+    def test_validate_required_proc_for_types_munki_without_importer_fails(self):
+        # Munki recipe without MunkiImporter should fail
+        process = [{"Processor": "URLDownloader"}]
+        with mock.patch("builtins.print") as mock_print:
+            result = target.validate_required_proc_for_types(
+                process, "App.munki.recipe"
+            )
+        self.assertFalse(result)
+        mock_print.assert_called_with(
+            "App.munki.recipe: Recipe type munki should contain processor MunkiImporter."
+        )
+
+    def test_validate_required_proc_for_types_pkg_with_creator_passes(self):
+        # Pkg recipe with PkgCreator should pass
+        process = [{"Processor": "PkgCreator"}]
+        result = target.validate_required_proc_for_types(process, "App.pkg.recipe")
+        self.assertTrue(result)
+
+    def test_validate_required_proc_for_types_pkg_without_creator_fails(self):
+        # Pkg recipe without required processor should fail
+        process = [{"Processor": "URLDownloader"}]
+        with mock.patch("builtins.print") as mock_print:
+            result = target.validate_required_proc_for_types(process, "App.pkg.recipe")
+        self.assertFalse(result)
+        mock_print.assert_called_with(
+            "App.pkg.recipe: Recipe type pkg should contain one of these processors: ['AppPkgCreator', 'PkgCreator', 'PkgCopier']."
+        )
+
+    def test_validate_required_proc_for_types_pkg_empty_process_passes(self):
+        # Pkg recipe with empty process list should pass (special case)
+        process = []
+        result = target.validate_required_proc_for_types(process, "App.pkg.recipe")
+        self.assertTrue(result)
+
+    def test_validate_required_proc_for_types_jss_with_importer_passes(self):
+        # JSS recipe with JSSImporter should pass
+        process = [{"Processor": "JSSImporter"}]
+        result = target.validate_required_proc_for_types(process, "App.jss.recipe")
+        self.assertTrue(result)
+
+    def test_validate_required_proc_for_types_unknown_type_passes(self):
+        # Unknown recipe type should pass (no checks)
+        process = [{"Processor": "SomeProcessor"}]
+        result = target.validate_required_proc_for_types(process, "App.unknown.recipe")
+        self.assertTrue(result)
+
+    def test_validate_proc_args_valid_arguments_passes(self):
+        # Valid arguments for a core processor should pass
+        # Skip if autopkglib is not available
+        if not target.HAS_AUTOPKGLIB:
+            self.skipTest("AutoPkg library not available")
+
+        # Mock the AutoPkg library functions
+        mock_proc = mock.Mock()
+        mock_proc.input_variables = {"url": {}, "filename": {}}
+
+        with mock.patch.object(
+            target, "processor_names", return_value=["URLDownloader"]
+        ), mock.patch.object(target, "get_processor", return_value=mock_proc):
+            process = [
+                {
+                    "Processor": "URLDownloader",
+                    "Arguments": {"url": "https://example.com/file.dmg"},
+                }
+            ]
+            result = target.validate_proc_args(process, "App.download.recipe")
+            self.assertTrue(result)
+
+    def test_validate_proc_args_invalid_argument_fails(self):
+        # Invalid argument for a core processor should fail
+        if not target.HAS_AUTOPKGLIB:
+            self.skipTest("AutoPkg library not available")
+
+        mock_proc = mock.Mock()
+        mock_proc.input_variables = {"url": {}, "filename": {}}
+
+        with mock.patch.object(
+            target, "processor_names", return_value=["URLDownloader"]
+        ), mock.patch.object(
+            target, "get_processor", return_value=mock_proc
+        ), mock.patch(
+            "builtins.print"
+        ) as mock_print:
+            process = [
+                {
+                    "Processor": "URLDownloader",
+                    "Arguments": {"invalid_arg": "value"},
+                }
+            ]
+            result = target.validate_proc_args(process, "App.download.recipe")
+            self.assertFalse(result)
+            # Check that the error message contains the key info
+            calls = mock_print.call_args_list
+            self.assertEqual(len(calls), 2)  # Error message + suggestion
+            self.assertIn("Unknown argument invalid_arg", str(calls[0]))
+
+    def test_validate_proc_args_ignored_arguments_passes(self):
+        # Ignored arguments like "note" should pass
+        if not target.HAS_AUTOPKGLIB:
+            self.skipTest("AutoPkg library not available")
+
+        mock_proc = mock.Mock()
+        mock_proc.input_variables = {"url": {}, "filename": {}}
+
+        with mock.patch.object(
+            target, "processor_names", return_value=["URLDownloader"]
+        ), mock.patch.object(target, "get_processor", return_value=mock_proc):
+            process = [
+                {
+                    "Processor": "URLDownloader",
+                    "Arguments": {
+                        "url": "https://example.com/file.dmg",
+                        "note": "This is a note",
+                    },
+                }
+            ]
+            result = target.validate_proc_args(process, "App.download.recipe")
+            self.assertTrue(result)
+
+    def test_validate_proc_args_non_core_processor_passes(self):
+        # Non-core processors should be skipped
+        if not target.HAS_AUTOPKGLIB:
+            self.skipTest("AutoPkg library not available")
+
+        with mock.patch.object(
+            target, "processor_names", return_value=["URLDownloader"]
+        ), mock.patch.object(target, "get_processor", return_value=mock.Mock()):
+            process = [
+                {
+                    "Processor": "com.github.custom.CustomProcessor",
+                    "Arguments": {"any_arg": "value"},
+                }
+            ]
+            result = target.validate_proc_args(process, "App.download.recipe")
+            self.assertTrue(result)
+
+    def test_validate_proc_args_processor_with_no_args_fails(self):
+        # Processor that doesn't accept arguments but receives one should fail
+        if not target.HAS_AUTOPKGLIB:
+            self.skipTest("AutoPkg library not available")
+
+        mock_proc = mock.Mock()
+        mock_proc.input_variables = {}  # No input variables
+
+        with mock.patch.object(
+            target, "processor_names", return_value=["StopProcessingIf"]
+        ), mock.patch.object(
+            target, "get_processor", return_value=mock_proc
+        ), mock.patch(
+            "builtins.print"
+        ) as mock_print:
+            process = [
+                {
+                    "Processor": "StopProcessingIf",
+                    "Arguments": {"invalid_arg": "value"},
+                }
+            ]
+            result = target.validate_proc_args(process, "App.download.recipe")
+            self.assertFalse(result)
+            calls = mock_print.call_args_list
+            self.assertGreater(len(calls), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
