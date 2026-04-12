@@ -12,9 +12,15 @@ All notable changes to this project will be documented in this file. This projec
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.24.1] - 2026-04-12
+
 ### Changed
 
 - Skipped AutoPkg recipe type convention checks when type is unknown. (#55)
+- Updated release documentation to reflect new automated workflow.
+- Built error handling into release automation workflow.
 
 ## [1.24.0] - 2026-04-12
 
@@ -470,7 +476,8 @@ All notable changes to this project will be documented in this file. This projec
 
 - Initial release
 
-[Unreleased]: https://github.com/homebysix/pre-commit-macadmin/compare/v1.24.0...HEAD
+[Unreleased]: https://github.com/homebysix/pre-commit-macadmin/compare/v1.24.1...HEAD
+[1.24.1]: https://github.com/homebysix/pre-commit-macadmin/compare/v1.24.0...v1.24.1
 [1.24.0]: https://github.com/homebysix/pre-commit-macadmin/compare/v1.23.0...v1.24.0
 [1.23.0]: https://github.com/homebysix/pre-commit-macadmin/compare/v1.22.0...v1.23.0
 [1.22.0]: https://github.com/homebysix/pre-commit-macadmin/compare/v1.21.0...v1.22.0

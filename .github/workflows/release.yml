@@ -29,6 +29,42 @@ jobs:
           echo "version=$(python ./setup.py --version)" >> $GITHUB_OUTPUT
           echo "Version detected: $(python ./setup.py --version)"
 
+      - name: Validate version alignment
+        run: |
+          VERSION="${{ steps.getversion.outputs.version }}"
+          ERRORS=0
+
+          # Check CHANGELOG.md has the version section
+          if ! grep -q "^## \[$VERSION\]" CHANGELOG.md; then
+            echo "::error file=CHANGELOG.md::CHANGELOG.md is missing a section for version [$VERSION]. The workflow extracts release notes from the CHANGELOG, so this section must exist before releasing. Expected format: '## [$VERSION] - YYYY-MM-DD'"
+            ERRORS=1
+          fi
+
+          # Check README.md has the version
+          if ! grep -q "rev: v$VERSION" README.md; then
+            CURRENT_README_VERSION=$(grep -m 1 "rev: v" README.md | sed -n 's/.*rev: v\([0-9.]*\).*/\1/p')
+            echo "::error file=README.md::README.md version (v$CURRENT_README_VERSION) does not match setup.py version ($VERSION). Update all 'rev: v' references in README.md to 'rev: v$VERSION' before releasing."
+            ERRORS=1
+          fi
+
+          # Check version link exists in CHANGELOG.md
+          if ! grep -q "^\[$VERSION\]:" CHANGELOG.md; then
+            echo "::error file=CHANGELOG.md::CHANGELOG.md is missing a version comparison link for [$VERSION]. Add '[$VERSION]: https://github.com/homebysix/pre-commit-macadmin/compare/vPREVIOUS...v$VERSION' at the bottom of CHANGELOG.md."
+            ERRORS=1
+          fi
+
+          if [ $ERRORS -gt 0 ]; then
+            echo ""
+            echo "❌ Version alignment check failed. Please ensure:"
+            echo "   1. CHANGELOG.md has a '## [$VERSION]' section with release notes"
+            echo "   2. README.md has 'rev: v$VERSION' in all examples"
+            echo "   3. CHANGELOG.md has a '[$VERSION]:' comparison link at the bottom"
+            echo ""
+            exit 1
+          fi
+
+          echo "✅ Version $VERSION is properly aligned across all files"
+
       - name: Fetch tags
         run: git fetch --tags origin
 
@@ -84,56 +120,32 @@ jobs:
           echo "next=$NEXT_VERSION" >> $GITHUB_OUTPUT
           echo "Next version will be: $NEXT_VERSION"
 
-      - name: Update setup.py version
-        if: steps.tagcheck.outputs.should_release == 'true'
-        run: |
-          sed -i 's/version="${{ steps.getversion.outputs.version }}"/version="${{ steps.nextversion.outputs.next }}"/' setup.py
-
-      - name: Update README.md version
-        if: steps.tagcheck.outputs.should_release == 'true'
-        run: |
-          sed -i 's/rev: v${{ steps.getversion.outputs.version }}/rev: v${{ steps.nextversion.outputs.next }}/g' README.md
-
-      - name: Update CHANGELOG.md
-        if: steps.tagcheck.outputs.should_release == 'true'
-        run: |
-          CURRENT="${{ steps.getversion.outputs.version }}"
-          NEXT="${{ steps.nextversion.outputs.next }}"
-          TODAY=$(date +%Y-%m-%d)
-
-          # Create temp file with new changelog section
-          cat > /tmp/changelog_update.txt << 'ENDOFCHANGELOG'
-          ## [Unreleased]
-
-          Nothing yet.
-
-          ## [NEXT_VERSION] - TODAY_PLACEHOLDER
-          ENDOFCHANGELOG
-
-          # Replace placeholders
-          sed -i "s/NEXT_VERSION/$NEXT/g" /tmp/changelog_update.txt
-          sed -i "s/TODAY_PLACEHOLDER/$TODAY/g" /tmp/changelog_update.txt
-
-          # Insert new section after the first "## [Unreleased]" line
-          sed -i "/## \[Unreleased\]/r /tmp/changelog_update.txt" CHANGELOG.md
-          # Remove the old "## [Unreleased]" and "Nothing yet." lines
-          sed -i '1,/Nothing yet\./ { /## \[Unreleased\]/d; /Nothing yet\./d }' CHANGELOG.md
-
-          # Update version comparison links at bottom
-          # Update [Unreleased] link
-          sed -i "s|\[Unreleased\]:.*|[Unreleased]: https://github.com/homebysix/pre-commit-macadmin/compare/v$NEXT...HEAD|" CHANGELOG.md
-          # Add new version link after [Unreleased]
-          sed -i "/\[Unreleased\]:/a [$NEXT]: https://github.com/homebysix/pre-commit-macadmin/compare/v$CURRENT...v$NEXT" CHANGELOG.md
-
-      - name: Commit version bump
+      - name: Merge main to dev
         if: steps.tagcheck.outputs.should_release == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add setup.py README.md CHANGELOG.md
-          git commit -m "Bump to ${{ steps.nextversion.outputs.next }} [skip ci]"
+          git fetch origin dev
+          git checkout dev
+          git merge origin/main --no-edit
 
-      - name: Push changes
+      - name: Update setup.py version on dev
         if: steps.tagcheck.outputs.should_release == 'true'
         run: |
-          git push origin main
+          sed -i 's/version="${{ steps.getversion.outputs.version }}"/version="${{ steps.nextversion.outputs.next }}"/' setup.py
+
+      - name: Update README.md version on dev
+        if: steps.tagcheck.outputs.should_release == 'true'
+        run: |
+          sed -i 's/rev: v${{ steps.getversion.outputs.version }}/rev: v${{ steps.nextversion.outputs.next }}/g' README.md
+
+      - name: Commit version bump on dev
+        if: steps.tagcheck.outputs.should_release == 'true'
+        run: |
+          git add setup.py README.md
+          git commit -m "Bump to ${{ steps.nextversion.outputs.next }}"
+
+      - name: Push dev branch
+        if: steps.tagcheck.outputs.should_release == 'true'
+        run: |
+          git push origin dev
