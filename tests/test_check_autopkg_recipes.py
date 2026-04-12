@@ -201,6 +201,34 @@ class TestCheckAutopkgRecipes(unittest.TestCase):
         result = target.validate_no_var_in_app_path(process, "file.recipe")
         self.assertTrue(result)
 
+    def test_validate_proc_type_conventions_unknown_type_passes(self):
+        # Unknown recipe type should skip validation and pass with warning
+        process = [{"Processor": "MunkiImporter"}]
+        with mock.patch("builtins.print") as mock_print:
+            result = target.validate_proc_type_conventions(process, "App.custom.recipe")
+        self.assertTrue(result)
+        mock_print.assert_called_with(
+            "App.custom.recipe: WARNING: Unknown recipe type. Skipping processor convention checks."
+        )
+
+    def test_validate_proc_type_conventions_known_type_wrong_processor_fails(self):
+        # Munki processor in a download recipe should fail
+        process = [{"Processor": "MunkiImporter"}]
+        with mock.patch("builtins.print") as mock_print:
+            result = target.validate_proc_type_conventions(
+                process, "App.download.recipe"
+            )
+        self.assertFalse(result)
+        mock_print.assert_called_with(
+            "App.download.recipe: Processor MunkiImporter is not conventional for this recipe type."
+        )
+
+    def test_validate_proc_type_conventions_known_type_correct_processor_passes(self):
+        # Munki processor in a munki recipe should pass
+        process = [{"Processor": "MunkiImporter"}]
+        result = target.validate_proc_type_conventions(process, "App.munki.recipe")
+        self.assertTrue(result)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -12,7 +12,9 @@ All notable changes to this project will be documented in this file. This projec
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- Skipped AutoPkg recipe type convention checks when type is unknown. (#55)
 
 ## [1.24.0] - 2026-04-12
 
